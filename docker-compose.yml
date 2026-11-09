@@ -1,0 +1,49 @@
+# =============================================================================
+# INSOPHINIA POS — Local development stack (MySQL only)
+# =============================================================================
+# Brings up a single MySQL 8.0 instance for local backend development.
+# Not used in production. Production deployments should use a managed MySQL
+# service (RDS / Cloud SQL / dedicated MySQL host) with separate credentials.
+#
+# Usage:
+#   docker compose up -d           # start MySQL (detached)
+#   docker compose logs -f mysql    # tail MySQL logs
+#   docker compose down             # stop (data persists in named volume)
+#   docker compose down -v          # stop + delete data (full reset)
+#
+# The backend, web, and desktop clients run on the host machine (not in
+# containers) so that hot-reload, debugger, and IDE integration work
+# normally. A containerized backend image is provided in `backend/Dockerfile`
+# for production builds but is intentionally not composed here.
+# =============================================================================
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: insophinia-mysql-dev
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-LocalRootOnly_ChangeMe_123}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-insophinia_pos}
+      MYSQL_USER: ${MYSQL_USER:-insophinia}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-CHANGE_ME}
+    ports:
+      # Bind to 127.0.0.1 only so the dev MySQL is never exposed to the LAN.
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/src/main/resources/db/migration:/docker-entrypoint-initdb.d:ro
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+      - --default-time-zone=+00:00
+      - --sql-mode=STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-LocalRootOnly_ChangeMe_123}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  mysql_data:
+    name: insophinia_mysql_dev_data

@@ -1,0 +1,179 @@
+# =============================================================================
+# INSOPHINIA POS Backend — Spring Boot application configuration
+# =============================================================================
+# Multi-document YAML: the first document is the default profile; subsequent
+# `---` blocks activate only when the listed profile is active.
+#
+# Database: MySQL 8.0+ (Flyway migrations live under
+# `classpath:db/migration/V*.sql`).
+#
+# Profiles:
+#   default — local development against a MySQL instance
+#   dev     — alias of default with verbose SQL logging
+#   prod    — production hardening (HTTP→HTTPS, no verbose logging)
+#   test    — Testcontainers-backed MySQL for JUnit integration tests
+#             (see src/test/resources/application-test.yml)
+#   desktop — embedded H2 for the Java desktop client (NOT for the server)
+# =============================================================================
+
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${PORT:8080}
+
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  application:
+    name: insophinia-pos-backend
+  datasource:
+    # MySQL 8.x JDBC URL. Required connection-string parameters:
+    #   useUnicode + characterEncoding=utf8 — preserve CJK/customer names
+    #   serverTimezone=UTC                  — match Hibernate jdbc.time_zone
+    #   allowPublicKeyRetrieval=true        — required when using caching_sha2_password
+    #   createDatabaseIfNotExist=true       — convenience for dev; remove in prod
+    url: ${DATABASE_URL:jdbc:mysql://127.0.0.1:3306/insophinia_pos?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true}
+    username: ${DATABASE_USER:insophinia}
+    password: ${DATABASE_PASSWORD:CHANGE_ME}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      minimum-idle: ${DB_POOL_MIN:2}
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      pool-name: InsophiniaPosHikariCP
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 1
+    locations: classpath:db/migration
+    table: flyway_schema_history
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: true
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+          batch_size: 50
+          default_schema: null
+        # MySQL 8 dialect; preferred_instant_jdbc_type=TIMESTAMP avoids DATETIME(6)
+        # silent truncation under MySQL (would otherwise round half-second).
+        type:
+          preferred_instant_jdbc_type: TIMESTAMP
+        format_sql: ${HIBERNATE_FORMAT_SQL:false}
+        use_sql_comments: false
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USER:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:true}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+    access-token-hours: ${JWT_HOURS:1}
+  rate-limit:
+    login-max: 10
+    api-max: 300
+    window-seconds: 60
+  cron-secret: ${CRON_SECRET}
+  backup:
+    encryption-key: ${BACKUP_ENCRYPTION_KEY:}
+    dir: ${BACKUP_DIR:./backups}
+  security:
+    totp-encryption-key: ${TOTP_ENCRYPTION_KEY:}
+    password-expiry-days: ${PASSWORD_EXPIRY_DAYS:7}
+  logs:
+    retention-hours: ${LOG_RETENTION_HOURS:24}
+  seed:
+    admin-username: ${SEED_ADMIN_USERNAME:master}
+    admin-password: ${SEED_ADMIN_PASSWORD}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://127.0.0.1:3000,http://127.0.0.1:5173,http://127.0.0.1:4173}
+  display:
+    channels: ${POS_DISPLAY_CHANNELS:}
+    default-channel: ${POS_DISPLAY_CHANNEL:}
+
+# =============================================================================
+# Profile: dev — verbose SQL logging for local development
+# =============================================================================
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  jpa:
+    properties:
+      hibernate:
+        format_sql: true
+        use_sql_comments: true
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    com.insophinia.pos: DEBUG
+
+# =============================================================================
+# Profile: prod — production hardening
+# =============================================================================
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+logging:
+  level:
+    org.hibernate.SQL: WARN
+    com.insophinia.pos: INFO
+
+# =============================================================================
+# Profile: desktop — embedded H2 for the Java desktop client only.
+# The Spring Boot server is NOT used by the desktop app; this profile exists
+# only to support a single-user local server mode if needed.
+# =============================================================================
+---
+spring:
+  config:
+    activate:
+      on-profile: desktop
+  datasource:
+    url: jdbc:h2:file:${user.home}/.insophinia/pos-db;AUTO_SERVER=TRUE
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  flyway:
+    enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: update

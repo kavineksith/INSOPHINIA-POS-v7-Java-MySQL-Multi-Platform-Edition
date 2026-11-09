@@ -1,0 +1,66 @@
+# =============================================================================
+# Test profile — Testcontainers-managed MySQL 8.0
+# =============================================================================
+# Testcontainers manages the MySQL container automatically.
+
+#
+# For tests that don't need a real DB (plain unit tests), Spring will not
+# initialize a datasource at all when @JpaTest is not used.
+# =============================================================================
+
+spring:
+  datasource:
+    # Testcontainers JDBC URL pattern — `testcontainers` magic schema is
+    # recognized by the testcontainers-jdbc shim and starts a fresh container.
+    # For @Testcontainers-managed tests, this URL is replaced at runtime by
+    # the container's real JDBC URL.
+    url: ${TEST_DATABASE_URL:jdbc:tc:mysql:8.0:///insophinia_test}
+    username: ${TEST_DATABASE_USER:test}
+    password: ${TEST_DATABASE_PASSWORD:test}
+    driver-class-name: ${TEST_DATABASE_DRIVER:org.testcontainers.jdbc.ContainerDatabaseDriver}
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    locations: classpath:db/migration
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: true
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+          batch_size: 25
+        type:
+          preferred_instant_jdbc_type: TIMESTAMP
+
+  mail:
+    host: localhost
+
+app:
+  jwt:
+    secret: test-jwt-secret-which-is-long-enough-for-hmac-sha-256
+    access-token-hours: 1
+  rate-limit:
+    login-max: 100
+    api-max: 1000
+    window-seconds: 60
+  cron-secret: test-cron-secret
+  backup:
+    encryption-key: test-backup-key-that-is-at-least-thirty-two-characters
+    dir: ./target/test-backups
+  security:
+    totp-encryption-key: test-totp-key-that-is-at-least-thirty-two-characters
+    password-expiry-days: 7
+  logs:
+    retention-hours: 1
+  seed:
+    admin-username: test-master
+    admin-password: TestMaster!Password123
+  cors:
+    allowed-origins: http://localhost:5173,http://localhost:4173
+  display:
+    channels: ""
+    default-channel: ""
